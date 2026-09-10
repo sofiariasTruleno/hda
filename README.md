@@ -120,41 +120,7 @@ curl -X POST http://localhost:5000/trabajos -H "Content-Type: application/json" 
 
 ---
 
-## Guía de defensa
 
-Las preguntas que el tutor puede hacer y dónde está la respuesta en el código.
-
-**¿Por qué `Diagnostico`, `Novedad` y `Ejecucion` son entidades internas y no agregaciones propias?**
-Porque no tienen ciclo de vida transaccional autónomo fuera de la orden de servicio. Nadie consulta una Ejecución sin su Trabajo. Está en HDA-004 y en el docstring de `dominio/entidades.py`.
-
-**¿Por qué `AgregacionRaiz` acumula eventos en vez de publicarlos de inmediato?**
-Por transaccionalidad. Si se publicara dentro del método de negocio y luego el commit fallara, habría eventos anunciando hechos que nunca ocurrieron. La `UnidadTrabajo` publica solo después del commit. Ver `seedwork/infraestructura/uow.py`, y la prueba `test_eventos_solo_se_publican_tras_el_commit`.
-
-**¿Cuál es la diferencia entre evento de dominio y evento de integración aquí?**
-El de dominio se queda dentro del microservicio y comunica módulos: `SLAIncumplido` lo consume el módulo Cumplimiento. El de integración sale por el bus como published language, se versiona y es contrato: `TrabajoCompletadoIntegracion` lo consumen Confianza y Reputación, Pagos y Liquidación. Ver `trabajos/dominio/eventos.py`.
-
-**¿Dónde está el puerto y dónde el adaptador?**
-`dominio/repositorios.py` declara `RepositorioTrabajos` como interfaz abstracta. `infraestructura/repositorios.py` la implementa con SQLAlchemy. El dominio no importa nada de infraestructura. La evidencia es que `tests/test_dominio.py` corre sin base de datos y sin Flask.
-
-**¿Por qué hay dos mapeadores?**
-Son dos traducciones distintas. `aplicacion/mapeadores.py` traduce dominio ↔ DTO para la API. `infraestructura/mapeadores.py` traduce dominio ↔ tabla para la persistencia. Si fueran uno solo, un cambio en el esquema de la base afectaría el contrato HTTP.
-
-**¿Por qué las entidades no heredan de `Base` de SQLAlchemy?**
-Porque el ORM dictaría cómo se modela el negocio. Las tablas están en `infraestructura/dto.py`, separadas del dominio, y el mapeador traduce entre las dos.
-
-**¿Qué separa CQS aquí en la práctica?**
-Los comandos abren unidad de trabajo, mutan agregados y emiten eventos. Las queries no abren unidad de trabajo, no mutan y no emiten nada. Además hay dos repositorios: `RepositorioTrabajosSQLAlchemy` para escritura y `RepositorioTrabajosLectura`, que lanza excepción si se intenta escribir. Eso deja abierto apuntar las lecturas a una réplica sin tocar el modelo de escritura.
-
-**¿Por qué una invariante violada devuelve 409 y no 500?**
-Porque el sistema funciona correctamente; la operación es la que no procede. Un 500 diría que hubo una falla técnica. Ver los manejadores de error en `api/__init__.py`.
-
-**¿Dónde se conecta esto con los escenarios de calidad?**
-`mercado_id` es la clave de partición del bus y el filtro de las queries: es el aislamiento por mercado del escenario SC-ESC-02. La proyección de Seguimiento es el lado de lectura que permite escalar las consultas del SC-ESC-01. `TrabajoCompletadoIntegracion` es el disparador del recálculo masivo de reputación del SC-ESC-03.
-
-**¿Por qué el agregado no emite eventos al rehidratarse desde la base?**
-Porque reconstruir no es un hecho de negocio nuevo. `dto_a_entidad` llama a `limpiar_eventos()` explícitamente.
-
----
 
 ## Alcance y recortes conscientes
 
